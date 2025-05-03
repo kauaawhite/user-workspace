@@ -14,6 +14,19 @@ let chatPartner = null;
 let typingTimeout = null;
 let isTyping = false;
 let selectedMessageId = null;
+let partnerOnline = false;
+let partnerTyping = false;
+
+function updateChatWithTitle() {
+  let statusText = '';
+  if (partnerTyping) {
+    statusText = 'typing...';
+  } else if (partnerOnline) {
+    statusText = 'online';
+  }
+  chatWithTitle.innerHTML = `Chat with ${chatPartner} <span class="text-xs text-gray-500 lowercase ml-2">${statusText}</span>`;
+  console.log('Updated chatWithTitle:', chatWithTitle.innerHTML);
+}
 
 function addMessageBubble(message, sender, status = '') {
   const bubble = document.createElement('div');
@@ -101,6 +114,7 @@ loginForm.addEventListener('submit', (e) => {
   if (enteredUsername === 'user1' || enteredUsername === 'user2') {
     username = enteredUsername;
     chatPartner = username === 'user1' ? 'user2' : 'user1';
+    updateChatWithTitle();
     socket.emit('login', { username, password: enteredPassword });
   } else {
     alert('Please enter a valid user ID: user1 or user2');
@@ -114,7 +128,18 @@ const renderedMessageIds = new Set();
 socket.on('loginSuccess', (user) => {
   loginPage.classList.add('hidden');
   chatPage.classList.remove('hidden');
-  chatWithTitle.textContent = `Chat with ${chatPartner}`;
+  updateChatWithTitle();
+});
+
+socket.on('partnerOnlineStatus', ({ username: partnerUsername, online }) => {
+  console.log('Received partnerOnlineStatus:', partnerUsername, online);
+  if (partnerUsername === chatPartner) {
+    partnerOnline = online;
+    if (!online) {
+      partnerTyping = false;
+    }
+    updateChatWithTitle();
+  }
 });
 
 socket.on('receiveMessage', (data) => {
@@ -131,7 +156,7 @@ socket.on('messageSeen', ({ messageId }) => {
   bubbles.forEach((bubble) => {
     const statusSpan = bubble.querySelector('.message-status');
     if (statusSpan) {
-      statusSpan.innerHTML = '<i class="fas fa-check-double text-blue-500"></i>';
+      statusSpan.innerHTML = '<i class="fas fa-check-double text-blue-500"></i><span class="text-[10px] text-blue-500">seen</span>';
     }
   });
 });
@@ -147,12 +172,7 @@ socket.on('errorMessage', (msg) => {
   alert(msg);
 });
 
-// Typing indicator UI
-const typingIndicator = document.createElement('div');
-typingIndicator.textContent = '';
-typingIndicator.classList.add('text-sm', 'italic', 'text-gray-500', 'ml-2');
-messagesContainer.parentNode.insertBefore(typingIndicator, messagesContainer.nextSibling);
-
+// Typing indicator UI moved to chatWithTitle update
 function sendTypingStatus(isTyping) {
   if (chatPartner) {
     socket.emit('typing', { to: chatPartner, isTyping });
@@ -172,8 +192,10 @@ messageInput.addEventListener('input', () => {
 });
 
 socket.on('typing', ({ from, isTyping }) => {
+  console.log('Received typing:', from, isTyping);
   if (from === chatPartner) {
-    typingIndicator.textContent = isTyping ? `${from} is typing...` : '';
+    partnerTyping = isTyping;
+    updateChatWithTitle();
   }
 });
 
@@ -211,8 +233,7 @@ messageForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Resize image to max dimension 800px and compress to jpeg quality 0.7
-function resizeImage(file, maxDimension = 800, quality = 0.7) {
+function resizeImage(file, maxDimension = 400, quality = 0.7) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const reader = new FileReader();
