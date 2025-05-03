@@ -88,10 +88,18 @@ io.on('connection', (socket) => {
 
     users[socket.id] = username;
     sockets[username] = socket.id;
+    onlineUsers.add(username);
     console.log(`User logged in: ${username} with socket id ${socket.id}`);
 
     // Notify user of login success
     socket.emit('loginSuccess', username);
+
+    // Notify chat partner that this user is online
+    const chatPartner = username === 'user1' ? 'user2' : 'user1';
+    const partnerSocketId = sockets[chatPartner];
+    if (partnerSocketId) {
+      io.to(partnerSocketId).emit('partnerOnlineStatus', { username: username, online: true });
+    }
 
     // Deliver undelivered messages if any
     if (undeliveredMessages[username]) {
@@ -109,6 +117,7 @@ io.on('connection', (socket) => {
       });
     }
   });
+
 
   // Handle sending message
   const { v4: uuidv4 } = require('uuid');
@@ -212,11 +221,20 @@ io.on('connection', (socket) => {
     const username = users[socket.id];
     console.log('User disconnected:', username);
     if (username) {
+      onlineUsers.delete(username);
       delete sockets[username];
       delete users[socket.id];
+
+      // Notify chat partner that this user is offline
+      const chatPartner = username === 'user1' ? 'user2' : 'user1';
+      const partnerSocketId = sockets[chatPartner];
+      if (partnerSocketId) {
+        io.to(partnerSocketId).emit('partnerOnlineStatus', { username: username, online: false });
+      }
     }
   });
 });
+
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
